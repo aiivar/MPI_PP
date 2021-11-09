@@ -51,15 +51,15 @@ public:
         int max = 0;
         int maxReduce = 0;
 
-        int arrLength = 10000;
+        int arrLength = 100000;
 
-        int err = MPI_Init(NULL, NULL);
-        err = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        err = MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+        MPI_Init(nullptr, nullptr);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
 
         int partition = arrLength / comm_size;
         int* arr = new int[arrLength];
-        int* receivebuf = new int[partition]; // В самом поcледнем задании показано как правильно объявлять такие массивы (malloc)
+        int* receivebuf = new int[partition];
         int* sendcounts = new int[comm_size];
         int* displs = new int[comm_size];
         if (rank == 0)
@@ -76,19 +76,19 @@ public:
             }
             printf("Scattering...\n");
         }
-        err = MPI_Scatterv(arr, sendcounts, displs, MPI_INT, receivebuf, partition, MPI_INT, 0, MPI_COMM_WORLD);
-        err = MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Scatterv(arr, sendcounts, displs, MPI_INT, receivebuf, partition, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
         for (int i = 0; i < partition; i++)
         {
             if (receivebuf[i] > maxReduce) maxReduce = receivebuf[i];
         }
         printf("Sending max %d to rank 0 from rank %d\n", maxReduce, rank);
-        err = MPI_Reduce(&maxReduce, &max, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&maxReduce, &max, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
         if (rank == 0)
         {
             printf("Max = %d\n", max);
         }
-        err = MPI_Finalize();
+        MPI_Finalize();
     }
 };
 
