@@ -2,6 +2,7 @@
 #include <map>
 #include <mpi.h>
 #include <unistd.h>
+#include <math.h>
 
 class Strategy {
 public:
@@ -92,6 +93,37 @@ public:
     }
 };
 
+class MPITask_3 : public Strategy{
+public:
+    void execute() override {
+        int rank, comm_size;
+        int count = 100000;
+        int innerCount = 0;
+        double x, y;
+        MPI_Init(NULL, NULL);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+        srand(rank);
+        int partition = count / comm_size;
+        int mpiInnerCount = 0;
+        for (int i = rank * partition; i < rank * partition + partition; i++)
+        {
+            x = (double)rand() / (double)RAND_MAX * 2 - 1;
+            y = (double)rand() / (double)RAND_MAX * 2 - 1;
+            if (pow(x, 2) + pow(y, 2) <= 1)
+                mpiInnerCount++;
+        }
+        printf("Sending %d to rank 0 from rank %d\n", mpiInnerCount, rank);
+        MPI_Reduce(&mpiInnerCount, &innerCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+        if (rank == 0)
+        {
+            double answer = (double)(4 * innerCount) / (double)count;
+            printf("Pi = %f          %d\n", answer, innerCount);
+        }
+        MPI_Finalize();
+    }
+};
+
 std::map<int, Strategy *> &getMap(std::map<int, Strategy *> &taskMapping);
 
 int main() {
@@ -120,5 +152,6 @@ int main() {
 std::map<int, Strategy *> &getMap(std::map<int, Strategy *> &taskMapping) {
     taskMapping[1] = new MPITask_1();
     taskMapping[2] = new MPITask_2();
+    taskMapping[3] = new MPITask_3();
     return taskMapping;
 }
