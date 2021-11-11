@@ -8,4 +8,5 @@ set(CMAKE_CXX_COMPILER "/usr/bin/mpic++")
 
 set(CMAKE_CXX_STANDARD 14)
 
+#set(SOURCE_FILES main.cpp)
 add_executable(MPI main.cpp)

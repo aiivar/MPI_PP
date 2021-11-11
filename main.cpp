@@ -36,7 +36,7 @@ public:
     }
 };
 
-class MPITask_1 : public Strategy{
+class MPITask_1 : public Strategy {
 public:
     void execute() override {
         MPI_Init(nullptr, nullptr);
@@ -45,12 +45,12 @@ public:
     }
 };
 
-class MPITask_2 : public Strategy{
+class MPITask_2 : public Strategy {
 public:
     void execute() override {
         int rank, comm_size;
         int max = 0;
-        int maxReduce = 0;
+        int maxLocal = 0;
 
         int arrLength = 100000;
 
@@ -58,42 +58,38 @@ public:
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
 
-        int partition = arrLength / comm_size;
-        int* arr = new int[arrLength];
-        int* receivebuf = new int[partition];
-        int* sendcounts = new int[comm_size];
-        int* displs = new int[comm_size];
-        if (rank == 0)
-        {
-            printf("Partition = %d\n", partition);
+        int local_size = arrLength / comm_size;
+        int *arr = new int[arrLength];
+        int *receivebuf = new int[local_size];
+        int *sendcounts = new int[comm_size];
+        int *displs = new int[comm_size];
+        if (rank == 0) {
+            printf("Local size = %d\n", local_size);
             srand(time(NULL));//random seed
-            for (int i = 0; i < arrLength; i++)
-            {
+            for (int i = 0; i < arrLength; i++) {
                 arr[i] = rand();
             }
             for (int i = 0; i < comm_size; ++i) {
-                displs[i] = i * partition;
-                sendcounts[i] = partition;
+                displs[i] = i * local_size;
+                sendcounts[i] = local_size;
             }
             printf("Scattering...\n");
         }
-        MPI_Scatterv(arr, sendcounts, displs, MPI_INT, receivebuf, partition, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Scatterv(arr, sendcounts, displs, MPI_INT, receivebuf, local_size, MPI_INT, 0, MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
-        for (int i = 0; i < partition; i++)
-        {
-            if (receivebuf[i] > maxReduce) maxReduce = receivebuf[i];
+        for (int i = 0; i < local_size; i++) {
+            if (receivebuf[i] > maxLocal) maxLocal = receivebuf[i];
         }
-        printf("Sending max %d to rank 0 from rank %d\n", maxReduce, rank);
-        MPI_Reduce(&maxReduce, &max, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
-        if (rank == 0)
-        {
+        printf("Sending max %d to rank 0 from rank %d\n", maxLocal, rank);
+        MPI_Reduce(&maxLocal, &max, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+        if (rank == 0) {
             printf("Max = %d\n", max);
         }
         MPI_Finalize();
     }
 };
 
-class MPITask_3 : public Strategy{
+class MPITask_3 : public Strategy {
 public:
     void execute() override {
         int rank, comm_size;
@@ -104,23 +100,221 @@ public:
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
         srand(rank);
-        int partition = count / comm_size;
-        int mpiInnerCount = 0;
-        for (int i = rank * partition; i < rank * partition + partition; i++)
-        {
-            x = (double)rand() / (double)RAND_MAX * 2 - 1;
-            y = (double)rand() / (double)RAND_MAX * 2 - 1;
+        int local_size = count / comm_size;
+        int localInnerCount = 0;
+        for (int i = rank * local_size; i < rank * local_size + local_size; i++) {
+            x = (double) rand() / (double) RAND_MAX * 2 - 1;
+            y = (double) rand() / (double) RAND_MAX * 2 - 1;
             if (pow(x, 2) + pow(y, 2) <= 1)
-                mpiInnerCount++;
+                localInnerCount++;
         }
-        printf("Sending %d to rank 0 from rank %d\n", mpiInnerCount, rank);
-        MPI_Reduce(&mpiInnerCount, &innerCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-        if (rank == 0)
-        {
-            double answer = (double)(4 * innerCount) / (double)count;
-            printf("Pi = %f          %d\n", answer, innerCount);
+        printf("Sending %d to rank 0 from rank %d\n", localInnerCount, rank);
+        MPI_Reduce(&localInnerCount, &innerCount, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+        if (rank == 0) {
+            double answer = (double) (4 * innerCount) / (double) count;
+            printf("Pi = %f\n%d\n", answer, innerCount);
         }
         MPI_Finalize();
+    }
+};
+
+class MPITask_4 : public Strategy {
+public:
+    void execute() override {
+        const int n = 10000;
+        int sum = 0;
+
+        int rank, comm_size;
+
+        MPI_Init(NULL, NULL);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+        int local_size = n / comm_size;
+        int *sendcounts = new int[comm_size];
+        int *displs = new int[comm_size];
+        int *arr = new int[n];
+        int *receivebuff = new int[local_size];
+        int sumLocal = 0;
+
+        if (rank == 0) {
+            printf("Local size = %d\n", local_size);
+            srand(time(NULL));
+            for (int i = 0; i < n; ++i) {
+                arr[i] = rand();
+            }
+            for (int i = 0; i < comm_size; ++i) {
+                sendcounts[i] = local_size;
+                displs[i] = i * local_size;
+            }
+        }
+        MPI_Scatterv(arr, sendcounts, displs, MPI_INT, receivebuff, local_size, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        for (int i = 0; i < local_size; ++i) {
+            int number = receivebuff[i];
+            if (number > 0) {
+                sumLocal += number;
+            }
+        }
+
+        printf("Local sum of procces #%d = %d\n", rank, sumLocal);
+
+        MPI_Reduce(&sumLocal, &sum, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+
+        if (rank == 0) {
+            printf("General sum = %d\n", sum);
+            double result = sum * 1.0 / n;
+            printf("Average of positive numbers = %.4f\n", result);
+        }
+
+        MPI_Finalize();
+    }
+};
+
+class MPITask_5 : public Strategy {
+public:
+    void execute() override {
+        int rank, comm_size;
+        int n = 10000;
+
+        MPI_Init(NULL, NULL);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+        int local_size = n / comm_size;
+        int *a = new int[n];
+        int *b = new int[n];
+        long sumLocal = 0;
+        long sum = 0;
+
+        int *aLocal = new int[local_size];
+        int *bLocal = new int[local_size];
+        int *sendcounts = new int[comm_size];
+        int *displs = new int[comm_size];
+
+        if (rank == 0) {
+            printf("Local size = %d\n", local_size);
+            srand(time(NULL));
+            for (int i = 0; i < n; ++i) {
+                a[i] = rand() % 10;
+                b[i] = rand() % 10;
+            }
+            for (int i = 0; i < comm_size; ++i) {
+                sendcounts[i] = local_size;
+                displs[i] = i * local_size;
+            }
+        }
+
+        MPI_Scatterv(a, sendcounts, displs, MPI_INT, aLocal, local_size, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Scatterv(b, sendcounts, displs, MPI_INT, bLocal, local_size, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
+        for (int i = 0; i < local_size; ++i) {
+            sumLocal += (long) (aLocal[i] * bLocal[i]);
+        }
+        printf("Local inner product #%d = %ld\n", rank, sumLocal);
+        MPI_Reduce(&sumLocal, &sum, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+        if (rank == 0) {
+            printf("Inner product = %ld\n", sum);
+        }
+    }
+};
+
+class MPITask_6 : public Strategy {
+public:
+    void execute() override {
+        const int n = 12;
+
+        int matrix[n][n];
+
+        int maxmin = INT32_MIN, minmax = INT32_MAX;
+        int local_maxmin = maxmin;
+        int local_minmax = minmax;
+
+        int rank, comm_size;
+
+        MPI_Init(NULL, NULL);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+        int local_size = n / comm_size;
+        int *localMinimums = new int[local_size];
+        int *localMaximums = new int[local_size];
+        int part_to_process[local_size][n];
+
+        if (rank == 0) {
+            printf("Local size = %d\n", local_size);
+            srand(time(NULL));
+            for (int i = 0; i < n; ++i) {
+                printf("| ");
+                for (int j = 0; j < n; ++j) {
+                    matrix[i][j] = rand() % 10;
+                    printf("%d ", matrix[i][j]);
+                }
+                printf("|\n");
+            }
+        }
+        MPI_Scatter(matrix, local_size * n, MPI_INT, part_to_process, local_size * n, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        for (int i = 0; i < local_size; ++i) {
+            int localMin = INT32_MAX;
+            int localMax = INT32_MIN;
+            for (int j = 0; j < n; ++j) {
+                if (localMin > part_to_process[i][j]) localMin = part_to_process[i][j];
+                if (localMax < part_to_process[i][j]) localMax = part_to_process[i][j];
+            }
+            localMinimums[i] = localMin;
+            localMaximums[i] = localMax;
+        }
+        for (int i = 0; i < local_size; ++i) {
+            if (local_maxmin < localMinimums[i]) local_maxmin = localMinimums[i];
+            if (local_minmax > localMaximums[i]) local_minmax = localMaximums[i];
+        }
+
+        printf("Local maxmin = %d, local minmax = %d\n", local_maxmin, local_minmax);
+
+        MPI_Reduce(&local_maxmin, &maxmin, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&local_minmax, &minmax, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
+
+        if (rank == 0){
+            printf("maxmin = %d, minmax = %d\n", maxmin, minmax);
+        }
+    }
+};
+
+class MPITask_7 : public Strategy {
+public:
+    void execute() override {
+
+    }
+};
+
+class MPITask_8 : public Strategy {
+public:
+    void execute() override {
+
+    }
+};
+
+class MPITask_9 : public Strategy {
+public:
+    void execute() override {
+
+    }
+};
+
+class MPITask_10 : public Strategy {
+public:
+    void execute() override {
+
+    }
+};
+
+class MPITask_11 : public Strategy {
+public:
+    void execute() override {
+
     }
 };
 
@@ -130,11 +324,7 @@ int main() {
     std::map<int, Strategy *> taskMapping;
     taskMapping = getMap(taskMapping);
 
-    int task;
-
-    printf("## Enter number of the task:");
-
-    scanf("%d", &task);
+    int task = 6;
 
     if (task < 1 || task > taskMapping.size()) {
         return 0;
@@ -143,7 +333,6 @@ int main() {
     Context *context = new Context();
     context->setStrategy(taskMapping[task]);
     context->runStrategy();
-    printf("## End of task #%d", task);
 
     //end
     return 0;
@@ -153,5 +342,13 @@ std::map<int, Strategy *> &getMap(std::map<int, Strategy *> &taskMapping) {
     taskMapping[1] = new MPITask_1();
     taskMapping[2] = new MPITask_2();
     taskMapping[3] = new MPITask_3();
+    taskMapping[4] = new MPITask_4();
+    taskMapping[5] = new MPITask_5();
+    taskMapping[6] = new MPITask_6();
+    taskMapping[7] = new MPITask_7();
+    taskMapping[8] = new MPITask_8();
+    taskMapping[9] = new MPITask_9();
+    taskMapping[10] = new MPITask_10();
+    taskMapping[11] = new MPITask_11();
     return taskMapping;
 }
