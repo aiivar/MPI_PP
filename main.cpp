@@ -217,13 +217,14 @@ public:
         if (rank == 0) {
             printf("Inner product = %ld\n", sum);
         }
+        MPI_Finalize();
     }
 };
 
 class MPITask_6 : public Strategy {
 public:
     void execute() override {
-        const int n = 12;
+        const int n = 8;
 
         int matrix[n][n];
 
@@ -281,6 +282,7 @@ public:
         if (rank == 0) {
             printf("maxmin = %d, minmax = %d\n", maxmin, minmax);
         }
+        MPI_Finalize();
     }
 };
 
@@ -328,7 +330,7 @@ public:
             printf("--    --\n");
         }
         MPI_Barrier(MPI_COMM_WORLD);
-        printf("Scatter x\n");
+//        printf("Scatter x\n");
         MPI_Scatter(&x[0], local_size, MPI_INT, &x_local[0], local_size, MPI_INT, 0, MPI_COMM_WORLD);
 //        printf("Scatter local columns\n");
 //        MPI_Scatter(&a[0], local_size, column_type, &local_columns[0], local_size, column_type, 0,
@@ -336,11 +338,12 @@ public:
         MPI_Bcast(&a[0], n*n, MPI_INT, 0, MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
 
-        printf("Start calculating\n");
+//        printf("Start calculating\n");
         for (int i = 0; i < n; ++i) {
             y_local[i] = 0;
             for (int j = 0; j < local_size; ++j) {
                 y_local[i] = y_local[i] + a[i*n + j + rank*local_size] * x_local[j];
+//                y_local[i] = y_local[i] + local_columns[i*n+j]* x_local[j];
             }
             printf("y_local[%d] = %d, process #%d\n", i, y_local[i], rank);
         }
@@ -355,34 +358,242 @@ public:
                 printf("y[%d] = %d\n", i, y[i]);
             }
         }
+        MPI_Finalize();
     }
 };
 
 class MPITask_8 : public Strategy {
 public:
-    void execute() override {
 
+    void execute() override {
+        int n = 40;
+        int rank, comm_size;
+
+        MPI_Init(NULL, NULL);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+        int local_size = n/comm_size;
+        int* a = new int[n];
+        int* a_local = new int[local_size];
+        int* new_a = new int[n];
+
+        if (rank == 0){
+            printf("Local size = %d\n", local_size);
+            srand(time(NULL));
+            printf("Array a: ");
+            for (int i = 0; i < n; ++i) {
+                a[i] = rand() % 10;
+                printf("%d ", a[i]);
+            }
+            printf("\n");
+            for (int i = 0; i < comm_size; ++i) {
+                int* send = new int[local_size];
+                for (int j = 0; j < local_size; ++j) {
+                    send[j] = a[i*local_size + j];
+                }
+                if (i == 0){
+                    a_local = send;
+                } else {
+                    MPI_Send(send, local_size, MPI_INT, i, i, MPI_COMM_WORLD);
+                }
+            }
+        }
+        if (rank != 0){
+            MPI_Recv(a_local, local_size, MPI_INT, 0, rank, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+        }
+        printf("Local #%d array: ", rank);
+        for (int i = 0; i < local_size; ++i) {
+            printf("%d ", a_local[i]);
+        }
+        printf("\n");
+
+        if (rank != 0){
+            MPI_Send(a_local, local_size, MPI_INT, 0, rank, MPI_COMM_WORLD);
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank == 0){
+            for (int i = 0; i < comm_size; ++i) {
+                if (i != 0){
+                    MPI_Recv(a_local, local_size, MPI_INT, i, i, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+                }
+                for (int j = 0; j < local_size; ++j) {
+                    new_a[i*local_size + j] = a_local[j];
+                }
+            }
+            printf("Array new_a: ");
+            for (int i = 0; i < n; ++i) {
+                printf("%d ", new_a[i]);
+            }
+        }
     }
 };
 
 class MPITask_9 : public Strategy {
 public:
     void execute() override {
+        int n = 40;
+        int rank, comm_size;
 
+        MPI_Init(NULL, NULL);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+        int local_size = n/comm_size;
+        int* a = new int[n];
+        int* a_reversed = new int[n];
+        int* sendcounts = new int[comm_size];
+        int* displs = new int[comm_size];
+        int* reverse_displs = new int[comm_size];
+        if (rank == 0) {
+            printf("Local size = %d\n", local_size);
+            srand(time(NULL));
+            printf("ARRAY a: ");
+            for (int i = 0; i < n; ++i) {
+                a[i] = rand() % 10;
+                printf("%d ", a[i]);
+            }
+            printf("\n");
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+        sendcounts[0] = local_size;
+        displs[0] = 0;
+        reverse_displs[0] = n - local_size;
+
+        for (int i = 1; i < comm_size; i++) {
+            if (i == comm_size-1){
+                sendcounts[i] = n - local_size*i;
+            } else{
+                sendcounts[i] = local_size;
+            }
+            displs[i] = displs[i - 1] + sendcounts[i - 1];
+            reverse_displs[i] = reverse_displs[i - 1] - sendcounts[i];
+        }
+        int length = sendcounts[rank];
+        printf("rank%d -> len = %d\n", rank, length);
+        int* a_local = new int[length];
+
+        MPI_Scatterv(a, sendcounts, displs, MPI_INT, a_local, length, MPI_INT, 0, MPI_COMM_WORLD);
+
+        int* revers = new int[length];
+        for(int i = 0; i < length; i++) {
+            revers[i] = a_local[length - i - 1];
+        }
+
+        MPI_Gatherv(revers, length, MPI_INT, a_reversed, sendcounts, reverse_displs, MPI_INT, 0, MPI_COMM_WORLD);
+
+        if(rank == 0) {
+            printf("ARRAY a_reversed: ");
+            for(int i = 0; i < n; i++)
+                printf("%d ", a_reversed[i]);
+            printf("\n");
+        }
+
+        MPI_Finalize();
     }
 };
 
 class MPITask_10 : public Strategy {
 public:
     void execute() override {
+        int n = 100000000;
+        int rank, comm_size;
+        MPI_Init(NULL, NULL);
 
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+        int* a = new int[n];
+        double start, end;
+        if(rank == 0) {
+            srand(time(NULL));
+            for (int i = 0; i < n; i++) {
+                a[i] = rand();
+            }
+
+            start = MPI_Wtime();
+            MPI_Send(a, n, MPI_INT, 1, 0, MPI_COMM_WORLD);
+            MPI_Recv(a, n, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            end = MPI_Wtime();
+            printf("Send = %f\n", end-start);
+
+            start = MPI_Wtime();
+            MPI_Ssend(a, n, MPI_INT, 1, 1, MPI_COMM_WORLD);
+            MPI_Recv(a, n, MPI_INT, 1, 1, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            end = MPI_Wtime();
+            printf("Ssend = %f\n", end-start);
+
+            int buffer_attached_size = MPI_BSEND_OVERHEAD + sizeof(int)*n;
+            int* buffer_attached = (int*)malloc(buffer_attached_size);
+            MPI_Buffer_attach(buffer_attached, buffer_attached_size);
+
+            start = MPI_Wtime();
+            MPI_Bsend(a, n, MPI_INT, 1, 2, MPI_COMM_WORLD);
+            MPI_Recv(a, n, MPI_INT, 1, 2, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            end = MPI_Wtime();
+            printf("Bsend = %f\n", end-start);
+
+            MPI_Buffer_detach(&buffer_attached, &buffer_attached_size);
+
+            start = MPI_Wtime();
+            MPI_Rsend(a, n, MPI_INT, 1, 3, MPI_COMM_WORLD);
+            MPI_Recv(a, n, MPI_INT, 1, 3, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            end = MPI_Wtime();
+            printf("Rsend = %f\n", end-start);
+
+        } else {
+            MPI_Recv(a, n, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            MPI_Send(a, n, MPI_INT, 0, 0, MPI_COMM_WORLD);
+
+            MPI_Recv(a, n, MPI_INT, 0, 1, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            MPI_Ssend(a, n, MPI_INT, 0, 1, MPI_COMM_WORLD);
+
+            int buffer_attached_size = MPI_BSEND_OVERHEAD + sizeof(int)*n;
+            int* buffer_attached = (int*)malloc(buffer_attached_size);
+            MPI_Buffer_attach(buffer_attached, buffer_attached_size);
+
+            MPI_Recv(a, n, MPI_INT, 0, 2, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            MPI_Bsend(a, n, MPI_INT, 0, 2, MPI_COMM_WORLD);
+
+            MPI_Buffer_detach(&buffer_attached, &buffer_attached_size);
+
+            MPI_Recv(a, n, MPI_INT, 0, 3, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            MPI_Rsend(a, n, MPI_INT, 0, 3, MPI_COMM_WORLD);
+        }
+
+        MPI_Finalize();
     }
 };
 
 class MPITask_11 : public Strategy {
 public:
     void execute() override {
+        int rank, comm_size;
+        MPI_Init(NULL, NULL);
 
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+        int* send = new int[1];
+        int* receive = new int[1];
+        if (rank == 0) {
+            send[0] = 0;
+            MPI_Send(send, 1, MPI_INT, rank + 1, rank + 1, MPI_COMM_WORLD);
+        }
+        if (rank != 0) {
+            MPI_Recv(receive, 1, MPI_INT, rank - 1, rank, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            send[0] = receive[0] + 5;
+            if (rank != comm_size - 1)
+                MPI_Send(send, 1, MPI_INT, rank + 1, rank + 1, MPI_COMM_WORLD);
+            else
+                MPI_Send(send, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+        }
+        if (rank == 0) {
+            MPI_Recv(receive, 1, MPI_INT, comm_size - 1, 0, MPI_COMM_WORLD, MPI_STATUSES_IGNORE);
+            printf("result = %d\n", receive[0]);
+        }
+
+        MPI_Finalize();
     }
 };
 
@@ -392,7 +603,7 @@ int main() {
     std::map<int, Strategy *> taskMapping;
     taskMapping = getMap(taskMapping);
 
-    int task = 7;
+    int task = 11;
 
     if (task < 1 || task > taskMapping.size()) {
         return 0;
