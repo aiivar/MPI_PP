@@ -254,7 +254,8 @@ public:
                 printf("|\n");
             }
         }
-        MPI_Scatter(matrix, local_size * n, MPI_INT, part_to_process, local_size * n, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Scatter(&matrix[0][0], local_size * n, MPI_INT, &part_to_process[0][0], local_size * n, MPI_INT, 0,
+                    MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
 
         for (int i = 0; i < local_size; ++i) {
@@ -277,7 +278,7 @@ public:
         MPI_Reduce(&local_maxmin, &maxmin, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&local_minmax, &minmax, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
 
-        if (rank == 0){
+        if (rank == 0) {
             printf("maxmin = %d, minmax = %d\n", maxmin, minmax);
         }
     }
@@ -286,7 +287,74 @@ public:
 class MPITask_7 : public Strategy {
 public:
     void execute() override {
+        int n = 4;
+        int* a = new int[n*n];
+        int x[n], y[n];
+        int rank, comm_size;
 
+        MPI_Init(NULL, NULL);
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+
+        int local_size = n / comm_size;
+        MPI_Datatype column_type;
+        MPI_Type_vector(n, 1, n, MPI_INT, &column_type);
+        MPI_Type_commit(&column_type);
+        int* local_columns = new int[local_size*n];
+        int* y_local = new int[n];
+        int* x_local = new int[local_size];
+        int* y_all = new int[n*comm_size];
+
+        if (rank == 0) {
+            printf("Local size = %d\n", local_size);
+            srand(time(NULL));
+            for (int i = 0; i < n; ++i) {
+                x[i] = rand() % 2;
+                for (int j = 0; j < n; ++j) {
+                    a[i*n + j] = rand() % 10;
+                }
+            }
+            printf("--INIT--\n");
+            for (int i = 0; i < n; ++i) {
+                printf("x[%d]=%d\n", i, x[i]);
+            }
+            for (int i = 0; i < n; ++i) {
+                printf("| ");
+                for (int j = 0; j < n; ++j) {
+                    printf("%d ", a[i*n + j]);
+                }
+                printf("|\n");
+            }
+            printf("--    --\n");
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
+        printf("Scatter x\n");
+        MPI_Scatter(&x[0], local_size, MPI_INT, &x_local[0], local_size, MPI_INT, 0, MPI_COMM_WORLD);
+//        printf("Scatter local columns\n");
+//        MPI_Scatter(&a[0], local_size, column_type, &local_columns[0], local_size, column_type, 0,
+//                    MPI_COMM_WORLD);
+        MPI_Bcast(&a[0], n*n, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        printf("Start calculating\n");
+        for (int i = 0; i < n; ++i) {
+            y_local[i] = 0;
+            for (int j = 0; j < local_size; ++j) {
+                y_local[i] = y_local[i] + a[i*n + j + rank*local_size] * x_local[j];
+            }
+            printf("y_local[%d] = %d, process #%d\n", i, y_local[i], rank);
+        }
+
+        MPI_Gather(&y_local[0], n, MPI_INT, &y_all[0], n, MPI_INT, 0, MPI_COMM_WORLD);
+        if (rank == 0) {
+            for (int i = 0; i < n; ++i) {
+                y[i] = 0;
+                for (int j = 0; j < comm_size; ++j) {
+                    y[i] = y[i] + y_all[j*n+i];
+                }
+                printf("y[%d] = %d\n", i, y[i]);
+            }
+        }
     }
 };
 
@@ -324,7 +392,7 @@ int main() {
     std::map<int, Strategy *> taskMapping;
     taskMapping = getMap(taskMapping);
 
-    int task = 6;
+    int task = 7;
 
     if (task < 1 || task > taskMapping.size()) {
         return 0;
