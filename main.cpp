@@ -217,10 +217,10 @@ public:
         for (int i = 0; i < local_size; ++i) {
             sumLocal += (long) (aLocal[i] * bLocal[i]);
         }
-        printf("Local inner product #%d = %ld\n", rank, sumLocal);
+        printf("Local sumLocal in #%d = %ld\n", rank, sumLocal);
         MPI_Reduce(&sumLocal, &sum, 1, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
         if (rank == 0) {
-            printf("Inner product = %ld\n", sum);
+            printf("Sum = %ld\n", sum);
         }
         MPI_Finalize();
     }
