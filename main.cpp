@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <math.h>
 
+//4, 6, 7
+
 class Strategy {
 public:
     ~Strategy() = default;
@@ -127,7 +129,7 @@ class MPITask_4 : public Strategy {
 public:
     void execute() override {
         const int n = 10000;
-        int sum = 0;
+        long sum = 0;
 
         int rank, comm_size;
 
@@ -140,13 +142,15 @@ public:
         int *displs = new int[comm_size];
         int *arr = new int[n];
         int *receivebuff = new int[local_size];
-        int sumLocal = 0;
+        long sumLocal = 0;
+        int count = 0;
+        long* from_reduce = new long[2];
 
         if (rank == 0) {
             printf("Local size = %d\n", local_size);
             srand(time(NULL));
             for (int i = 0; i < n; ++i) {
-                arr[i] = rand();
+                arr[i] = rand() % 1000;
             }
             for (int i = 0; i < comm_size; ++i) {
                 sendcounts[i] = local_size;
@@ -156,20 +160,29 @@ public:
         MPI_Scatterv(arr, sendcounts, displs, MPI_INT, receivebuff, local_size, MPI_INT, 0, MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
 
+        long* to_reduce = new long [2];
+        int local_count = 0;
         for (int i = 0; i < local_size; ++i) {
             int number = receivebuff[i];
             if (number > 0) {
                 sumLocal += number;
+                local_count++;
             }
         }
 
-        printf("Local sum of procces #%d = %d\n", rank, sumLocal);
+        to_reduce[0] = sumLocal;
+        to_reduce[1] = local_count;
 
-        MPI_Reduce(&sumLocal, &sum, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+        printf("Local sum of procces #%d = %ld, local count = %d\n", rank, sumLocal, local_count);
+
+        MPI_Reduce(&to_reduce[0], &from_reduce[0], 2, MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
 
         if (rank == 0) {
-            printf("General sum = %d\n", sum);
-            double result = sum * 1.0 / n;
+            sum = from_reduce[0];
+            count = from_reduce[1];
+            printf("General sum = %ld\n", sum);
+            printf("General count = %d\n", count);
+            double result = sum * 1.0 / count;
             printf("Average of positive numbers = %.4f\n", result);
         }
 
@@ -247,6 +260,8 @@ public:
         int *localMinimums = new int[local_size];
         int *localMaximums = new int[local_size];
         int part_to_process[local_size][n];
+        int *sendcounts = new int[comm_size];
+        int *displs = new int[comm_size];
 
         if (rank == 0) {
             printf("Local size = %d\n", local_size);
@@ -259,8 +274,20 @@ public:
                 }
                 printf("|\n");
             }
+
+            sendcounts[0] = local_size*n;
+            displs[0] = 0;
+
+            for (int i = 1; i < comm_size; i++) {
+                if (i == comm_size-1){
+                    sendcounts[i] = n*n - local_size*i*n;
+                } else{
+                    sendcounts[i] = local_size*n;
+                }
+                displs[i] = displs[i - 1] + sendcounts[i - 1];
+            }
         }
-        MPI_Scatter(&matrix[0][0], local_size * n, MPI_INT, &part_to_process[0][0], local_size * n, MPI_INT, 0,
+        MPI_Scatterv(&matrix[0][0], sendcounts, displs, MPI_INT, &part_to_process[0][0], local_size*n, MPI_INT, 0,
                     MPI_COMM_WORLD);
         MPI_Barrier(MPI_COMM_WORLD);
 
@@ -279,7 +306,7 @@ public:
             if (local_minmax > localMaximums[i]) local_minmax = localMaximums[i];
         }
 
-        printf("Local maxmin = %d, local minmax = %d\n", local_maxmin, local_minmax);
+        printf("%d#Local maxmin = %d, local minmax = %d\n",rank, local_maxmin, local_minmax);
 
         MPI_Reduce(&local_maxmin, &maxmin, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&local_minmax, &minmax, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
@@ -353,13 +380,14 @@ public:
             printf("y_local[%d] = %d, process #%d\n", i, y_local[i], rank);
         }
 
-        MPI_Gather(&y_local[0], n, MPI_INT, &y_all[0], n, MPI_INT, 0, MPI_COMM_WORLD);
+//        MPI_Gather(&y_local[0], n, MPI_INT, &y_all[0], n, MPI_INT, 0, MPI_COMM_WORLD);
+        MPI_Reduce(&y_local[0], &y[0], n, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
         if (rank == 0) {
             for (int i = 0; i < n; ++i) {
-                y[i] = 0;
-                for (int j = 0; j < comm_size; ++j) {
-                    y[i] = y[i] + y_all[j*n+i];
-                }
+//                y[i] = 0;
+//                for (int j = 0; j < comm_size; ++j) {
+//                 y[i] = y[i] + y_all[j*n+i];
+//                }
                 printf("y[%d] = %d\n", i, y[i]);
             }
         }
@@ -608,7 +636,7 @@ int main() {
     std::map<int, Strategy *> taskMapping;
     taskMapping = getMap(taskMapping);
 
-    int task = 3;
+    int task = 7;
 
     if (task < 1 || task > taskMapping.size()) {
         return 0;
